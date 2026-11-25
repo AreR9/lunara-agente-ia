@@ -1,0 +1,99 @@
+<!-- esto jala la plantilla base para no repetir la barra de navegacion ni el pie de pagina -->
+{% extends 'base.html' %}
+
+<!-- esto le cambia el titulo a la pestana del navegador -->
+{% block title %}LUNARA+ | Panel por rol{% endblock %}
+
+{% block content %}
+<!-- esta es la seccion principal que envuelve todo el panel -->
+<section class="role-dashboard">
+    <!-- esto le da la bienvenida al usuario sacando sus datos de las variables que manda python -->
+    <div class="role-hero">
+        <span class="sub-badge">Panel de acceso</span>
+        <h1>Bienvenido, {{ nombre_completo }}</h1>
+        <p>Tu vista esta personalizada para el perfil <strong>{{ role_label }}</strong>.</p>
+    </div>
+
+    <!-- si la persona es admin completo se activa esto y le desbloquea todas las tarjetas -->
+    {% if role_view.show_full_dashboard %}
+        <div class="dashboard-grid">
+            <!-- esto te avienta a la pantalla de gestion de empleados -->
+            <a class="dashboard-card" href="/staff">
+                <span class="card-icon">👥</span>
+                <strong>Usuarios y personal</strong>
+                <small>Administra el equipo de LUNARA.</small>
+            </a>
+            <!-- esto conecta directo con la lista de clientes registrados -->
+            <a class="dashboard-card" href="/clientes">
+                <span class="card-icon">◎</span>
+                <strong>Clientes</strong>
+                <small>Consulta y administra clientes.</small>
+            </a>
+            <!-- esto manda al catalogo de suscripciones o membresias que venden -->
+            <a class="dashboard-card" href="/planes">
+                <span class="card-icon">✦</span>
+                <strong>Planes y membresias</strong>
+                <small>Controle productos y servicios.</small>
+            </a>
+            <!-- esto te lleva a revisar los contratos activos de la gente -->
+            <a class="dashboard-card" href="/suscripciones">
+                <span class="card-icon">◈</span>
+                <strong>Suscripciones</strong>
+                <small>Revisa contratos y estados.</small>
+            </a>
+            <!-- esto abre la caja fuerte con el historial de compras y lana -->
+            <a class="dashboard-card" href="/pagos">
+                <span class="card-icon">$</span>
+                <strong>Pagos y reportes</strong>
+                <small>Consulta movimientos financieros.</small>
+            </a>
+            <!-- esto te manda directo al chat con la ia que vimos en la otra vista -->
+            <a class="dashboard-card" href="{{ url_for('agente') }}">
+                <span class="card-icon">✧</span>
+                <strong>Agente IA</strong>
+                <small>Consulta inteligente del sistema.</small>
+            </a>
+        </div>
+
+    <!-- si resulta que no es admin sino un cliente simple entra a este caminito -->
+    {% elif role_view.role == 'Cliente' %}
+        <div class="client-dashboard">
+            <div class="client-hero-icon">♫</div>
+            <h2>Tu espacio personalizado</h2>
+            <p>Como cliente puedes consultar tu perfil y recibir orientacion con el agente IA, incluida la musica que se ajuste a tu gusto.</p>
+            <!-- esto le pone un botonote al cliente para mandarlo directo a pedir rolas a la ia -->
+            <a class="btn-rect btn-primary" href="{{ url_for('agente') }}">Abrir asistente personal</a>
+        </div>
+
+    <!-- si no es admin ni cliente (por ejemplo un empleado) va revisando modulo por modulo que tiene permitido -->
+    {% else %}
+        <div class="dashboard-grid employee-grid">
+            <!-- esto itera los permisos especificos que trae guardados el usuario -->
+            {% for module in role_view.modules %}
+                <!-- si en su lista de permisos dice staff le dibuja este boton -->
+                {% if module == 'staff' %}
+                    <a class="dashboard-card" href="/staff"><span class="card-icon">👥</span><strong>Usuarios y personal</strong><small>Equipo de la plataforma.</small></a>
+                <!-- si tiene permiso de clientes le pinta este otro -->
+                {% elif module == 'clientes' %}
+                    <a class="dashboard-card" href="/clientes"><span class="card-icon">◎</span><strong>Clientes</strong><small>Consulta de clientes.</small></a>
+                <!-- esto checa si le toca ver la gestion de planes -->
+                {% elif module == 'planes' %}
+                    <a class="dashboard-card" href="/planes"><span class="card-icon">✦</span><strong>Planes y membresias</strong><small>Catalogo de servicios.</small></a>
+                <!-- esto conecta con el modulo de suscripciones si el rol lo tiene marcado -->
+                {% elif module == 'suscripciones' %}
+                    <a class="dashboard-card" href="/suscripciones"><span class="card-icon">◈</span><strong>Suscripciones</strong><small>Contratos y estados.</small></a>
+                <!-- esto le da paso a la seccion de pagos -->
+                {% elif module == 'pagos' %}
+                    <a class="dashboard-card" href="/pagos"><span class="card-icon">$</span><strong>Pagos</strong><small>Movimientos financieros.</small></a>
+                <!-- esto habilita la tarjeta de metricas y reportes -->
+                {% elif module == 'reporte' %}
+                    <a class="dashboard-card" href="/reporte"><span class="card-icon">▤</span><strong>Reportes</strong><small>Auditoria y analitica.</small></a>
+                <!-- esto conecta con la herramienta del bot de ia si se le dio permiso -->
+                {% elif module == 'agente' %}
+                    <a class="dashboard-card" href="{{ url_for('agente') }}"><span class="card-icon">✧</span><strong>Agente IA</strong><small>Consulta operativa.</small></a>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

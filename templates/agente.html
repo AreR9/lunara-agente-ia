@@ -1,0 +1,272 @@
+<!-- esto jala la plantilla principal y le pega lo de abajo -->
+{% extends 'base.html' %}
+
+{% block page_class %}agent-page{% endblock %}
+
+{% block content %}
+<!-- esto es la caja principal que envuelve todo el show del chat -->
+<section class="ai-shell">
+    
+    <!-- esta es la barra lateral con cosas del usuario y atajos -->
+    <aside class="ai-sidebar">
+        <div class="ai-brand">
+            <div class="ai-logo">✦</div>
+            <div>
+                <h3>IA LUNARA</h3>
+                <span class="sub-badge">{% if is_admin %}Administrador{% else %}{{ role_label }}{% endif %}</span>
+            </div>
+        </div>
+
+        <p class="ai-subtitle">{% if is_admin %}Administración de LUNARA desde el chat{% else %}Asistente personal para tu perfil{% endif %}</p>
+        <p class="ai-profile-copy">Hola, {{ session.get('nombre_completo') }}. Tu conversacion se adapta a tus permisos y necesidades.</p>
+        <!-- si el rol es cliente te enseña este bloquecito especial de musica -->
+        {% if role_view_role == 'Cliente' %}
+            <div class="music-feature">
+                <span>♫</span>
+            </div>
+        {% endif %}
+
+        {% if is_admin %}
+            <section class="admin-access" aria-label="Acceso a operaciones de base de datos">
+                {% if agent_database_authorized %}
+                    <div class="admin-access-status is-unlocked"><span class="dot"></span> Administración desbloqueada</div>
+                    <form method="post" action="{{ url_for('agente_bloquear') }}">
+                        <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                        <button type="submit" class="admin-access-button">Bloquear operaciones</button>
+                    </form>
+                {% else %}
+                    <div class="admin-access-status"><span class="dot"></span> Operaciones bloqueadas</div>
+                    <form method="post" action="{{ url_for('agente_desbloquear') }}" class="admin-unlock-form">
+                        <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                        <label for="master_password">Master Password</label>
+                        <input id="master_password" type="password" name="master_password" required autocomplete="current-password" placeholder="Confirma una vez">
+                        <button type="submit" class="admin-access-button">Desbloquear chat</button>
+                    </form>
+                {% endif %}
+            </section>
+        {% endif %}
+
+        <!-- esto saca una lista de cosas rapidas y las vuelve botones dinamicos -->
+        <div class="quick-prompts">
+            <div class="quick-prompts-title">{% if is_admin %}Acciones rápidas{% else %}Recomendaciones musicales{% endif %}</div>
+            {% for prompt in quick_prompts %}
+            <!-- esto conecta cada boton directo con la ruta del agente en el backend -->
+            <form method="post" action="{{ url_for('agente') }}">
+                <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                <input type="hidden" name="prompt" value="{{ prompt }}">
+                <button type="submit" class="prompt-chip" {% if pending_table_delete or pending_record_delete or pending_create %}disabled{% endif %}>{{ prompt }}</button>
+            </form>
+            {% endfor %}
+        </div>
+        {% if is_admin %}
+            <p class="music-privacy">{% if agent_database_authorized %}Puedes consultar y modificar registros directamente desde este chat.{% else %}Desbloquea el chat para habilitar consultas y cambios en la base de datos.{% endif %}</p>
+        {% else %}
+            <p class="music-privacy">Solo puede recomendar un artista o cancion mencionado. No se consultan datos internos.</p>
+        {% endif %}
+    </aside>
+
+    <!-- este es el panel donde pasa todo la magia de la charla -->
+    <div class="ai-panel">
+        
+        <!-- la parte de arriba del chat con tu nombre y el boton de reset -->
+        <div class="ai-header">
+            <div class="ai-header-title">
+                <span class="sub-badge">Agente</span>
+                <span>{{ session.get('nombre_completo') }} · {{ role_label }}</span>
+            </div>
+            <div class="ai-status"><span class="dot"></span> En linea</div>
+            <!-- este boton limpia el chat o la memoria y te manda a la funcion de borrar -->
+            <form method="post" action="{{ url_for('agente_reset') }}">
+                <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                <button type="submit" class="btn-clear">Limpiar</button>
+            </form>
+        </div>
+
+        <!-- esto itera todos los mensajes guardados y los va pintando en pantalla -->
+        <div class="chat-messages">
+            {% for message in messages %}
+                <!-- esto revisa quien hablo para cambiarle el color o la burbujita -->
+                <div class="chat-bubble {{ message.role }}">
+                    <span class="bubble-avatar">{% if message.role == 'user' %}YOU{% else %}✦{% endif %}</span><!-- son los avatares de cada burbuja -->
+                    <!-- esto le quita las negritas o asteriscos feos a lo que dice la ia -->
+                    <span class="bubble-content">{{ message.content | replace('**', '') }}</span>
+                </div>
+            {% endfor %}
+            {# Este panel aparece cuando el agente detecta que faltan datos para completar un alta. #}
+            {% if is_admin and agent_database_authorized and pending_create and not (pending_table_delete or pending_record_delete) %}
+                <section class="bulk-delete-confirmation record-create-confirmation" aria-label="Datos para crear un registro">
+                    <strong>Datos necesarios para crear en {{ pending_create.operation.arguments.table }}</strong>
+                    <p>Completa los campos requeridos. Los campos opcionales pueden dejarse vacíos. Esta lista se obtiene del esquema real de la base de datos.</p>
+                    <form method="post" action="{{ url_for('agente_crear_registro') }}" class="bulk-delete-form">
+                        <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                        {# Recorre los campos reales; los obligatorios se marcan y no se inventan nombres. #}
+                        {% for field in pending_create.fields %}
+                            {% set field_id = 'create_field_' ~ field.name %}
+                            {% set field_invalid = field.name in pending_create.invalid_fields %}
+                            <label for="{{ field_id }}">{{ field.name.replace('_', ' ') }}{% if field.required %} · obligatorio{% else %} · opcional{% endif %}</label>
+                            {% if field.allowed_values %}
+                                {# Si la base devolvió opciones (como los roles), permite elegirlas en una lista. #}
+                                <select id="{{ field_id }}" name="{{ field_id }}" {% if field.required %}required{% endif %} {% if field_invalid %}aria-invalid="true"{% endif %}>
+                                    <option value="">Selecciona una opción</option>
+                                    {% for option in field.allowed_values %}
+                                        <option value="{{ option }}" {% if pending_create.operation.arguments['values'].get(field.name) == option %}selected{% endif %}>{{ option }}</option>
+                                    {% endfor %}
+                                </select>
+                            {% else %}
+                                {# Cambia el tipo de entrada para que fechas y cantidades sean más fáciles de capturar. #}
+                                {% set field_type = field.type|lower %}
+                                <input
+                                    id="{{ field_id }}"
+                                    name="{{ field_id }}"
+                                    type="{% if 'date' in field_type and 'time' not in field_type %}date{% elif 'int' in field_type or 'decimal' in field_type or 'float' in field_type or 'double' in field_type %}number{% else %}text{% endif %}"
+                                    {% if 'decimal' in field_type or 'float' in field_type or 'double' in field_type %}step="any"{% endif %}
+                                    {% if field.required %}required{% endif %}
+                                    {% if field_invalid %}aria-invalid="true"{% endif %}
+                                    value="{{ pending_create.operation.arguments['values'].get(field.name, '') if pending_create.operation.arguments['values'].get(field.name) is not none else '' }}"
+                                    placeholder="{{ field.type }}"
+                                >
+                            {% endif %}
+                        {% endfor %}
+                        {% if pending_create.operation.arguments.table == 'user' %}
+                            {# La contraseña se envía aparte y nunca se mezcla con los demás datos. #}
+                            <label for="create_secure_value">Contraseña del usuario · confidencial</label>
+                            <input id="create_secure_value" type="password" name="secure_value" required autocomplete="new-password" placeholder="Escribe la contraseña; no aparecerá en el chat">
+                        {% endif %}
+                        <button type="submit" class="record-create-submit">Crear registro</button>
+                    </form>
+                    <form method="post" action="{{ url_for('agente_cancelar_creacion') }}">
+                        <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                        <button type="submit" class="bulk-delete-cancel">Cancelar</button>
+                    </form>
+                </section>
+            {% endif %}
+            {# Este recuadro se muestra solo si el asistente necesita una contraseña confidencial. #}
+            {% if is_admin and agent_database_authorized and secure_value_pending and not (pending_table_delete or pending_record_delete) %}
+                <section class="bulk-delete-confirmation secure-value-confirmation" aria-label="Ingreso seguro de contraseña de usuario">
+                    <strong>Contraseña del usuario</strong>
+                    <p>Ingresa la contraseña de la cuenta que se está creando o actualizando. Se enviará directamente a la base de datos y no se incluirá en el mensaje del chat.</p>
+                    <form method="post" action="{{ url_for('agente') }}" class="bulk-delete-form">
+                        <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                        <input type="hidden" name="prompt" value="">
+                        <label for="secure_value">Contraseña nueva</label>
+                        <input id="secure_value" type="password" name="secure_value" required autocomplete="new-password" placeholder="Escribe la contraseña del usuario">
+                        <button type="submit" class="bulk-delete-submit">Enviar contraseña segura</button>
+                    </form>
+                </section>
+            {% endif %}
+            {# Los borrados masivos se mantienen separados del chat hasta confirmar clave y frase exacta. #}
+            {% if pending_table_delete or pending_record_delete %}
+                <section class="bulk-delete-confirmation" aria-label="Confirmación de borrado masivo">
+                    <strong>Confirmación de borrado</strong>
+                    {% if pending_record_delete %}
+                        {% set delete_table = pending_record_delete.table %}
+                        {% set confirmation_phrase = 'ELIMINAR ' ~ pending_record_delete.count ~ ' REGISTROS DE ' ~ pending_record_delete.table|upper %}
+                        <p>Se solicita eliminar <code>{{ pending_record_delete.count }}</code> registros de <code>{{ delete_table }}</code>. Ingresa la Destructive Password para continuar. Esta acción es irreversible y vence en cinco minutos.</p>
+                    {% else %}
+                        {% set delete_table = pending_table_delete.table %}
+                        {% set confirmation_phrase = 'ELIMINAR TABLA ' ~ pending_table_delete.table|upper %}
+                        <p>Se solicita vaciar <code>{{ delete_table }}</code>. Esta acción es irreversible y vence en cinco minutos.</p>
+                    {% endif %}
+                    {% if pending_record_delete %}
+                        <form method="post" action="{{ url_for('agente_confirmar_borrado_registros') }}" class="bulk-delete-form">
+                            <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                            <label for="destructive_password_delete">Destructive Password</label>
+                            <input id="destructive_password_delete" type="password" name="destructive_password" required autocomplete="current-password" placeholder="Destructive Password">
+                            <label for="confirmation_phrase">Escribe {{ confirmation_phrase }}</label>
+                            <input id="confirmation_phrase" type="text" name="confirmation_phrase" required autocomplete="off" placeholder="{{ confirmation_phrase }}">
+                            <button type="submit" class="bulk-delete-submit">Eliminar registros</button>
+                        </form>
+                    {% elif pending_table_delete and destructive_delete_configured %}
+                        <form method="post" action="{{ url_for('agente_confirmar_borrado_registros' if pending_record_delete else 'agente_confirmar_borrado_tabla') }}" class="bulk-delete-form">
+                            <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                            <label for="destructive_password">Destructive Password</label>
+                            <input id="destructive_password" type="password" name="destructive_password" required autocomplete="current-password" placeholder="Contraseña destructiva">
+                            <label for="confirmation_phrase">Escribe {{ confirmation_phrase }}</label>
+                            <input id="confirmation_phrase" type="text" name="confirmation_phrase" required autocomplete="off" placeholder="{{ confirmation_phrase }}">
+                            <button type="submit" class="bulk-delete-submit">Vaciar tabla</button>
+                        </form>
+                    {% else %}
+                        <p>La operación está deshabilitada: configura una DESTRUCTIVE_PASSWORD distinta de MASTER_PASSWORD en .env.</p>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('agente_cancelar_borrado_tabla') }}">
+                        <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+                        <button type="submit" class="bulk-delete-cancel">Cancelar</button>
+                    </form>
+                </section>
+            {% endif %}
+            {% if records_page %}
+                <section class="client-results" aria-label="Lista de registros">
+                    <div class="client-results-heading">
+                        <strong>{{ records_table_label }}</strong>
+                        <span>{{ records_page.total }} registros · Página {{ records_page.page }} de {{ records_page.pages }}</span>
+                    </div>
+                    <div class="client-results-scroll">
+                        <table class="client-results-table">
+                            <thead>
+                                <tr>
+                                    {% for column in records_page.columns %}
+                                        <th>{{ column.replace('_', ' ') }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for record in records_page.records %}
+                                    <tr>
+                                        {% for column in records_page.columns %}
+                                            <td>{{ record.get(column, '') if record.get(column) is not none else '' }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% else %}
+                                    <tr><td colspan="{{ records_page.columns|length }}">No hay registros.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <nav class="client-results-pagination" aria-label="Paginación de clientes">
+                        {% if records_page.page > 1 %}
+                            <a href="{{ url_for('agente', records_table=records_page.table, records_page=records_page.page - 1) }}">‹ Anterior</a>
+                        {% else %}
+                            <span class="is-disabled">‹ Anterior</span>
+                        {% endif %}
+                        {% if records_page.page < records_page.pages %}
+                            <a href="{{ url_for('agente', records_table=records_page.table, records_page=records_page.page + 1) }}">Siguiente ›</a>
+                        {% else %}
+                            <span class="is-disabled">Siguiente ›</span>
+                        {% endif %}
+                    </nav>
+                </section>
+            {% endif %}
+        </div>
+
+        <!-- esto es para que escribas y mandes tu pregunta al servidor -->
+        <form class="chat-form" method="post" action="{{ url_for('agente') }}">
+            <input type="hidden" name="csrf_token" value="{{ agent_csrf_token }}">
+            <label for="agent_prompt">{% if is_admin %}Tu solicitud{% else %}Tu recomendacion musical{% endif %}</label>
+            {# Bloquea el mensaje normal mientras hay un formulario de alta o confirmación pendiente. #}
+            <textarea id="agent_prompt" name="prompt" placeholder="{% if is_admin %}Consulta o solicita un cambio en los datos de LUNARA...{% else %}Menciona un artista o cancion que quieras explorar...{% endif %}" {% if pending_table_delete or pending_record_delete or secure_value_pending or pending_create %}disabled{% else %}required{% endif %}></textarea>
+            <div class="chat-actions">
+                <span class="privacy-note">{% if pending_table_delete or pending_record_delete %}Completa o cancela la confirmación roja para continuar.{% elif pending_create %}Completa o cancela el formulario de creación para continuar.{% elif is_admin and secure_value_pending %}Usa el recuadro separado para enviar la contraseña segura.{% elif is_admin %}{{ 'Herramientas de base de datos activas' if agent_database_authorized else 'Modo de consulta general; base de datos bloqueada' }}{% else %}Solo funciona con artistas o canciones mencionados{% endif %}</span>
+                <button type="submit" class="send-btn" {% if pending_table_delete or pending_record_delete or secure_value_pending or pending_create %}disabled{% endif %}>Enviar ✦</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<!-- esto hace el scroll automatico para que no te quedes arriba viendo lo viejo -->
+<script>
+    const chatMessages = document.querySelector('.chat-messages');
+    if (chatMessages) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    const agentPrompt = document.querySelector('#agent_prompt');
+    if (agentPrompt) {
+        agentPrompt.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+                event.preventDefault();
+                agentPrompt.form.requestSubmit();
+            }
+        });
+    }
+</script>
+{% endblock %}

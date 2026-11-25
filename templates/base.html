@@ -1,0 +1,64 @@
+<!--PLANTILLA ESQUELETO BASE-->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LUNARA+{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="page-container {% block page_class %}{% endblock %}">
+<div class="capa"></div><!--cspits-->
+<!--Contiene la barra de menu transparente arriba-->
+<header class="header">
+    <div class="container">
+        <a href="{{ url_for('home') }}" class="logo-title" style="text-decoration: none;">
+            LUNARA
+        </a>
+        <nav class="menu"> <!--menu de navegacion parte superior derecha-->
+            {% if session.get('permissions', {}).get('manage_users') %}
+                <a href="/staff">Staff</a>
+            {% endif %}
+            {% if session.get('permissions', {}).get('view_contracts') %}
+                <a href="/clientes">Clientes</a>
+            {% endif %}
+            {% if session.get('permissions', {}).get('manage_plans') %}
+                <a href="/planes">Planes</a>
+            {% endif %}
+            {% if session.get('permissions', {}).get('view_contracts') %}
+                <a href="/suscripciones">Suscripciones</a>
+            {% endif %}
+            {% if session.get('permissions', {}).get('view_financials') %}
+                <a href="/pagos">Pagos</a>
+            {% endif %}
+            {% if session.get('permissions', {}).get('view_financials') %}
+                <a href="/reporte">Reportes</a>
+            {% endif %}
+            {% if session.get('role', '')|lower in ['administrador', 'admin'] %}
+                <a href="{{ url_for('agente') }}">Agente administrador</a>
+            {% endif %}
+            {% if session.get('user_id') %}
+                <a href="{{ url_for('logout') }}" class="logout-link">Cerrar sesión</a>
+            {% endif %}
+        </nav>
+    </div>
+</header>
+
+  
+    <main class="main-container"><!--contenedor de lo que se coloque enlos sig html-->
+    {% with messages = get_flashed_messages(with_categories=true) %}<!--con mensajes??-->
+      {% for category, message in messages %}<!--si si los va recorrer como en una lista-->
+        <div class="flash-msg flash-{{ category }}">{{ message }}</div><!--y los va mostrar segun su categoria con un diseño ya puesto en el style.css-->
+      {% endfor %}
+    {% endwith %}
+
+    {% block content %}
+    {% endblock %}
+</main>
+
+    <footer class="footer">
+        <p>BBYM+ &copy; 2026 - Todos los derechos reservados</p>
+    </footer>
+
+</body>
+</html>
